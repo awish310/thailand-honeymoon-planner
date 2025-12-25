@@ -1,21 +1,15 @@
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import { TripItem } from "@/data/tripData";
 import { 
   format, 
-  startOfMonth, 
-  endOfMonth, 
   eachDayOfInterval, 
-  isSameMonth,
   isSameDay,
-  addMonths,
-  subMonths,
   startOfWeek,
   endOfWeek,
   parseISO,
-  isWithinInterval
+  isWithinInterval,
+  eachWeekOfInterval
 } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface CalendarViewProps {
@@ -25,14 +19,26 @@ interface CalendarViewProps {
 }
 
 export function CalendarView({ items, selectedDate, onDateSelect }: CalendarViewProps) {
-  const [currentMonth, setCurrentMonth] = useState(new Date(2026, 0, 1)); // Start at Jan 2026
+  // Calculate trip date range
+  const tripRange = useMemo(() => {
+    const allDates = items.flatMap(item => [
+      parseISO(item.start.split("T")[0]),
+      parseISO(item.end.split("T")[0])
+    ]);
+    
+    const startDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+    const endDate = new Date(Math.max(...allDates.map(d => d.getTime())));
+    
+    return { start: startDate, end: endDate };
+  }, [items]);
 
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(currentMonth);
-  const calendarStart = startOfWeek(monthStart);
-  const calendarEnd = endOfWeek(monthEnd);
-
-  const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
+  // Get all weeks that span the trip
+  const weeks = useMemo(() => {
+    const tripStart = startOfWeek(tripRange.start);
+    const tripEnd = endOfWeek(tripRange.end);
+    
+    return eachWeekOfInterval({ start: tripStart, end: tripEnd });
+  }, [tripRange]);
 
   // Get stays that overlap with a specific date
   const getStaysForDate = (date: Date): TripItem[] => {
@@ -55,8 +61,11 @@ export function CalendarView({ items, selectedDate, onDateSelect }: CalendarView
     });
   };
 
-  const hasEvents = (date: Date) => {
-    return getStaysForDate(date).length > 0 || getFlightsForDate(date).length > 0;
+  // Check if date is within trip range
+  const isInTripRange = (date: Date) => {
+    return isWithinInterval(date, tripRange) || 
+           isSameDay(date, tripRange.start) || 
+           isSameDay(date, tripRange.end);
   };
 
   const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -64,30 +73,14 @@ export function CalendarView({ items, selectedDate, onDateSelect }: CalendarView
   return (
     <div className="bg-card rounded-lg shadow-card border border-border/50 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-border/50">
-        <Button 
-          variant="ghost" 
-          size="icon"
-          onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-          className="hover:bg-muted"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </Button>
-        <h2 className="font-display text-xl font-semibold text-foreground">
-          {format(currentMonth, "MMMM yyyy")}
+      <div className="p-4 border-b border-border/50">
+        <h2 className="font-display text-xl font-semibold text-foreground text-center">
+          {format(tripRange.start, "dd MMM")} – {format(tripRange.end, "dd MMM yyyy")}
         </h2>
-        <Button 
-          variant="ghost" 
-          size="icon"
-          onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-          className="hover:bg-muted"
-        >
-          <ChevronRight className="w-5 h-5" />
-        </Button>
       </div>
 
       {/* Week days header */}
-      <div className="grid grid-cols-7 border-b border-border/50">
+      <div className="grid grid-cols-7 border-b border-border/50 bg-muted/30">
         {weekDays.map(day => (
           <div 
             key={day} 
@@ -98,68 +91,88 @@ export function CalendarView({ items, selectedDate, onDateSelect }: CalendarView
         ))}
       </div>
 
-      {/* Calendar grid */}
-      <div className="grid grid-cols-7">
-        {days.map((day, idx) => {
-          const stays = getStaysForDate(day);
-          const flights = getFlightsForDate(day);
-          const isCurrentMonth = isSameMonth(day, currentMonth);
-          const isSelected = selectedDate && isSameDay(day, selectedDate);
-          const hasContent = stays.length > 0 || flights.length > 0;
-
+      {/* Calendar grid - all weeks */}
+      <div className="divide-y divide-border/30">
+        {weeks.map((weekStart, weekIdx) => {
+          const weekEnd = endOfWeek(weekStart);
+          const daysInWeek = eachDayOfInterval({ start: weekStart, end: weekEnd });
+          
+          // Check if this is a new month to show month label
+          const firstDayOfMonth = daysInWeek.find(d => d.getDate() === 1);
+          
           return (
-            <button
-              key={idx}
-              onClick={() => onDateSelect(isSelected ? null : day)}
-              className={cn(
-                "min-h-[80px] md:min-h-[100px] p-1.5 border-b border-r border-border/30 text-left transition-all relative",
-                !isCurrentMonth && "bg-muted/30",
-                isCurrentMonth && "bg-card hover:bg-muted/50",
-                isSelected && "ring-2 ring-primary ring-inset bg-primary/5",
-                hasContent && "cursor-pointer"
+            <div key={weekIdx}>
+              {/* Month label if new month starts */}
+              {firstDayOfMonth && weekIdx > 0 && (
+                <div className="bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                  {format(firstDayOfMonth, "MMMM yyyy")}
+                </div>
               )}
-            >
-              <span className={cn(
-                "text-sm font-medium",
-                !isCurrentMonth && "text-muted-foreground/50",
-                isCurrentMonth && "text-foreground",
-                isSelected && "text-primary"
-              )}>
-                {format(day, "d")}
-              </span>
+              {weekIdx === 0 && (
+                <div className="bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                  {format(weekStart, "MMMM yyyy")}
+                </div>
+              )}
+              
+              <div className="grid grid-cols-7">
+                {daysInWeek.map((day, dayIdx) => {
+                  const stays = getStaysForDate(day);
+                  const flights = getFlightsForDate(day);
+                  const inTrip = isInTripRange(day);
+                  const isSelected = selectedDate && isSameDay(day, selectedDate);
+                  const hasContent = stays.length > 0 || flights.length > 0;
 
-              <div className="mt-1 space-y-0.5 overflow-hidden">
-                {/* Show flights first */}
-                {flights.map((flight, fidx) => (
-                  <div 
-                    key={`f-${fidx}`}
-                    className="text-[10px] md:text-xs px-1.5 py-0.5 rounded bg-flight/15 text-flight font-medium truncate"
-                  >
-                    {flight.from}→{flight.to}
-                  </div>
-                ))}
-                
-                {/* Show stays */}
-                {stays.slice(0, 2).map((stay, sidx) => (
-                  <div 
-                    key={`s-${sidx}`}
-                    className="text-[10px] md:text-xs px-1.5 py-0.5 rounded font-medium truncate"
-                    style={{ 
-                      backgroundColor: `${stay.color}20`,
-                      color: stay.color 
-                    }}
-                  >
-                    {stay.place}
-                  </div>
-                ))}
-                
-                {stays.length > 2 && (
-                  <div className="text-[10px] text-muted-foreground pl-1">
-                    +{stays.length - 2} more
-                  </div>
-                )}
+                  return (
+                    <button
+                      key={dayIdx}
+                      onClick={() => onDateSelect(isSelected ? null : day)}
+                      className={cn(
+                        "min-h-[70px] md:min-h-[90px] p-1.5 border-r border-border/30 last:border-r-0 text-left transition-all relative",
+                        !inTrip && "bg-muted/20",
+                        inTrip && "bg-card hover:bg-muted/50",
+                        isSelected && "ring-2 ring-primary ring-inset bg-primary/5",
+                        hasContent && "cursor-pointer"
+                      )}
+                    >
+                      <span className={cn(
+                        "text-sm font-medium",
+                        !inTrip && "text-muted-foreground/40",
+                        inTrip && "text-foreground",
+                        isSelected && "text-primary"
+                      )}>
+                        {format(day, "d")}
+                      </span>
+
+                      <div className="mt-1 space-y-0.5 overflow-hidden">
+                        {/* Show flights first */}
+                        {flights.map((flight, fidx) => (
+                          <div 
+                            key={`f-${fidx}`}
+                            className="text-[10px] md:text-xs px-1.5 py-0.5 rounded bg-flight/15 text-flight font-medium truncate"
+                          >
+                            {flight.from}→{flight.to}
+                          </div>
+                        ))}
+                        
+                        {/* Show stays */}
+                        {stays.slice(0, 1).map((stay, sidx) => (
+                          <div 
+                            key={`s-${sidx}`}
+                            className="text-[10px] md:text-xs px-1.5 py-0.5 rounded font-medium truncate"
+                            style={{ 
+                              backgroundColor: `${stay.color}20`,
+                              color: stay.color 
+                            }}
+                          >
+                            {stay.place}
+                          </div>
+                        ))}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
