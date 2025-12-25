@@ -1,14 +1,17 @@
 import { format, parseISO } from "date-fns";
-import { Plane, Home, MapPin, Clock, Calendar, FileText, Building } from "lucide-react";
+import { Plane, Home, MapPin, Clock, Calendar, FileText, Building, Pencil, Trash2 } from "lucide-react";
 import { TripItem } from "@/data/tripData";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 interface TripCardProps {
   item: TripItem;
   index: number;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }
 
-export function TripCard({ item, index }: TripCardProps) {
+export function TripCard({ item, index, onEdit, onDelete }: TripCardProps) {
   const isStay = item.type === "stay";
   
   const formatTime = (dateStr: string) => {
@@ -143,6 +146,34 @@ export function TripCard({ item, index }: TripCardProps) {
           {item.notes && (
             <div className="pt-2 border-t border-border/50 mt-2">
               <p className="text-muted-foreground leading-relaxed">{item.notes}</p>
+            </div>
+          )}
+
+          {/* Edit/Delete buttons */}
+          {(onEdit || onDelete) && (
+            <div className="flex gap-2 pt-3 mt-3 border-t border-border/50">
+              {onEdit && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={onEdit}
+                  className="flex-1"
+                >
+                  <Pencil className="w-3 h-3 mr-1" />
+                  Edit
+                </Button>
+              )}
+              {onDelete && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={onDelete}
+                  className="flex-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="w-3 h-3 mr-1" />
+                  Delete
+                </Button>
+              )}
             </div>
           )}
         </div>
