@@ -5,18 +5,20 @@ import { format, parseISO, isWithinInterval, startOfDay, endOfDay, isSameDay } f
 interface ListViewProps {
   items: TripItem[];
   selectedDate: Date | null;
+  onEdit?: (index: number) => void;
+  onDelete?: (index: number) => void;
 }
 
-export function ListView({ items, selectedDate }: ListViewProps) {
-  // Group items by date
-  const groupedItems = items.reduce((acc, item) => {
+export function ListView({ items, selectedDate, onEdit, onDelete }: ListViewProps) {
+  // Group items by date with original indices
+  const groupedItems = items.reduce((acc, item, originalIndex) => {
     const dateKey = item.start.split("T")[0];
     if (!acc[dateKey]) {
       acc[dateKey] = [];
     }
-    acc[dateKey].push(item);
+    acc[dateKey].push({ item, originalIndex });
     return acc;
-  }, {} as Record<string, TripItem[]>);
+  }, {} as Record<string, { item: TripItem; originalIndex: number }[]>);
 
   // Sort dates
   const sortedDates = Object.keys(groupedItems).sort();
@@ -24,12 +26,12 @@ export function ListView({ items, selectedDate }: ListViewProps) {
   // Filter by selected date if any
   const filteredDates = selectedDate
     ? sortedDates.filter(date => {
-        const item = items.find(i => i.start.split("T")[0] === date);
-        if (!item) return false;
+        const entry = items.find(i => i.start.split("T")[0] === date);
+        if (!entry) return false;
         
-        const startDate = startOfDay(parseISO(item.start.split("T")[0]));
-        const endDate = item.type === "stay" 
-          ? endOfDay(parseISO(item.end.split("T")[0]))
+        const startDate = startOfDay(parseISO(entry.start.split("T")[0]));
+        const endDate = entry.type === "stay" 
+          ? endOfDay(parseISO(entry.end.split("T")[0]))
           : endOfDay(startDate);
         
         return isWithinInterval(selectedDate, { start: startDate, end: endDate }) ||
@@ -41,15 +43,17 @@ export function ListView({ items, selectedDate }: ListViewProps) {
   const getItemsForDate = (dateKey: string) => {
     if (!selectedDate) return groupedItems[dateKey];
     
-    return items.filter(item => {
-      const startDate = startOfDay(parseISO(item.start.split("T")[0]));
-      const endDate = item.type === "stay" 
-        ? endOfDay(parseISO(item.end.split("T")[0]))
-        : endOfDay(startDate);
-      
-      return isWithinInterval(selectedDate, { start: startDate, end: endDate }) ||
-             isSameDay(selectedDate, startDate);
-    });
+    return items
+      .map((item, originalIndex) => ({ item, originalIndex }))
+      .filter(({ item }) => {
+        const startDate = startOfDay(parseISO(item.start.split("T")[0]));
+        const endDate = item.type === "stay" 
+          ? endOfDay(parseISO(item.end.split("T")[0]))
+          : endOfDay(startDate);
+        
+        return isWithinInterval(selectedDate, { start: startDate, end: endDate }) ||
+               isSameDay(selectedDate, startDate);
+      });
   };
 
   const datesToShow = selectedDate 
@@ -73,8 +77,14 @@ export function ListView({ items, selectedDate }: ListViewProps) {
               </h2>
             </div>
             <div className="space-y-3">
-              {itemsForDate.map((item, idx) => (
-                <TripCard key={`${item.title}-${idx}`} item={item} index={idx} />
+              {itemsForDate.map(({ item, originalIndex }, idx) => (
+                <TripCard 
+                  key={`${item.title}-${originalIndex}`} 
+                  item={item} 
+                  index={idx}
+                  onEdit={onEdit ? () => onEdit(originalIndex) : undefined}
+                  onDelete={onDelete ? () => onDelete(originalIndex) : undefined}
+                />
               ))}
             </div>
           </div>
